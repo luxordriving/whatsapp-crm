@@ -23,8 +23,6 @@ import { decrypt } from '@/lib/whatsapp/encryption';
 import {
   sanitizePhoneForMeta,
   isValidE164,
-  phoneVariants,
-  isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
 import type { MessageTemplate } from '@/types';
@@ -59,6 +57,7 @@ export interface CreateBroadcastParams {
 interface PlannedRecipient {
   recipientRowId: string;
   phone: string;
+  waId: string | null;
   params: string[];
 }
 
@@ -145,7 +144,7 @@ export async function createBroadcast(
 
   // Resolve each recipient to a contact. Invalid phones are dropped
   // (counted as rejected) rather than aborting the whole broadcast.
-  const resolved: { contactId: string; phone: string; params: string[] }[] = [];
+  const resolved: { contactId: string; phone: string; waId: string | null; params: string[] }[] = [];
   let rejected = 0;
   for (const r of recipients) {
     const sanitized = sanitizePhoneForMeta(typeof r.to === 'string' ? r.to : '');
@@ -153,12 +152,13 @@ export async function createBroadcast(
       rejected++;
       continue;
     }
-    const { id } = await findOrCreateContact(db, accountId, auditUserId, {
+    const { id, waId } = await findOrCreateContact(db, accountId, auditUserId, {
       phone: sanitized,
     });
     resolved.push({
       contactId: id,
       phone: sanitized,
+      waId,
       params: Array.isArray(r.params)
         ? r.params.filter((p): p is string => typeof p === 'string')
         : [],
@@ -231,7 +231,7 @@ export async function createBroadcast(
   const byContact = new Map(deduped.map((r) => [r.contactId, r]));
   const planned: PlannedRecipient[] = recipientRows.map((row) => {
     const r = byContact.get(row.contact_id as string)!;
-    return { recipientRowId: row.id as string, phone: r.phone, params: r.params };
+    return { recipientRowId: row.id as string, phone: r.phone, waId: r.waId, params: r.params };
   });
 
   return {
@@ -266,30 +266,25 @@ export async function deliverBroadcast(
   let sentCount = 0;
 
   for (const recipient of plan.planned) {
-    const variants = phoneVariants(recipient.phone);
+    const targetId = recipient.waId || recipient.phone;
     let sentMessageId: string | null = null;
     let lastError: string | null = null;
 
-    for (const variant of variants) {
-      try {
-        const result = await sendTemplateMessage({
-          phoneNumberId: plan.phoneNumberId,
-          accessToken: plan.accessToken,
-          to: variant,
-          templateName: plan.templateName,
-          language: plan.templateLanguage,
-          template: plan.templateRow ?? undefined,
-          params: recipient.params,
-        });
-        sentMessageId = result.messageId;
-        lastError = null;
-        break;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        lastError = message;
-        // Only a "recipient not allowed" error is worth another variant.
-        if (!isRecipientNotAllowedError(message)) break;
-      }
+    try {
+      const result = await sendTemplateMessage({
+        phoneNumberId: plan.phoneNumberId,
+        accessToken: plan.accessToken,
+        to: targetId,
+        templateName: plan.templateName,
+        language: plan.templateLanguage,
+        template: plan.templateRow ?? undefined,
+        params: recipient.params,
+      });
+      sentMessageId = result.messageId;
+      lastError = null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      lastError = message;
     }
 
     if (sentMessageId) {

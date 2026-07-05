@@ -111,7 +111,7 @@ export async function findOrCreateContact(
   accountId: string,
   auditUserId: string,
   input: ContactInput
-): Promise<{ id: string; created: boolean }> {
+): Promise<{ id: string; created: boolean; waId: string | null }> {
   const sanitized = sanitizePhoneForMeta(input.phone);
   if (!isValidE164(sanitized)) {
     throw new ContactError(
@@ -121,7 +121,13 @@ export async function findOrCreateContact(
   }
 
   const existing = await findExistingContact(db, accountId, sanitized);
-  if (existing) return { id: existing.id, created: false };
+  if (existing) {
+    return { 
+      id: existing.id, 
+      created: false, 
+      waId: (existing.wa_id as string | null) ?? null 
+    };
+  }
 
   const { data: created, error } = await db
     .from('contacts')
@@ -133,7 +139,7 @@ export async function findOrCreateContact(
       email: input.email ?? null,
       company: input.company ?? null,
     })
-    .select('id')
+    .select('id, wa_id')
     .single();
 
   if (error || !created) {
@@ -141,13 +147,19 @@ export async function findOrCreateContact(
     // rejected the duplicate. Re-resolve to the winner.
     if (isUniqueViolation(error)) {
       const raced = await findExistingContact(db, accountId, sanitized);
-      if (raced) return { id: raced.id, created: false };
+      if (raced) {
+        return { 
+          id: raced.id, 
+          created: false, 
+          waId: (raced.wa_id as string | null) ?? null 
+        };
+      }
     }
     console.error('[api/v1/contacts] create error:', error);
     throw new ContactError('Failed to create contact', 500);
   }
 
-  return { id: created.id, created: true };
+  return { id: created.id, created: true, waId: created.wa_id };
 }
 
 /**

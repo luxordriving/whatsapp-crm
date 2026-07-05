@@ -573,12 +573,12 @@ async function processMessage(
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
 
-  // Find or create contact
   const contactOutcome = await findOrCreateContact(
     accountId,
     configOwnerUserId,
     senderPhone,
-    contactName
+    contactName,
+    contact.wa_id
   )
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
@@ -974,7 +974,8 @@ async function findOrCreateContact(
   accountId: string,
   configOwnerUserId: string,
   phone: string,
-  name: string
+  name: string,
+  waId?: string
 ): Promise<ContactOutcome | null> {
   // Find an existing contact for this account by phone. The shared
   // helper pre-filters in SQL by the last-8-digit suffix (so we don't
@@ -989,14 +990,17 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
+    const updates: Record<string, string> = {}
+    if (name && name !== existingContact.name) updates.name = name
+    if (waId && waId !== existingContact.wa_id) updates.wa_id = waId
+
+    if (Object.keys(updates).length > 0) {
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('id', existingContact.id)
     }
-    return { contact: existingContact, wasCreated: false }
+    return { contact: { ...existingContact, ...updates }, wasCreated: false }
   }
 
   // Create new contact. account_id is the tenancy column;
@@ -1010,6 +1014,7 @@ async function findOrCreateContact(
       user_id: configOwnerUserId,
       phone,
       name: name || phone,
+      wa_id: waId || null,
     })
     .select()
     .single()
