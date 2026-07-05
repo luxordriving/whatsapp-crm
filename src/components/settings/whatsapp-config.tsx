@@ -587,7 +587,10 @@ export function WhatsAppConfig() {
             </div>
 
             <div className="space-y-2">
-              <Label className="text-muted-foreground">Permanent Access Token</Label>
+              <Label className="text-muted-foreground">System User Access Token</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                <strong className="text-amber-500">Important:</strong> Do not paste a &quot;Temporary Access Token&quot; from the Meta App Dashboard here. Temporary tokens expire exactly 24 hours after they are generated, causing outbound messages to fail with an Authentication Error. Instead, generate a Permanent System User Token in Meta Business Settings.
+              </p>
               <div className="relative">
                 <Input
                   type={showToken ? 'text' : 'password'}
