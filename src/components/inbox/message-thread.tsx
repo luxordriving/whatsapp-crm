@@ -761,19 +761,23 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("conversations")
-        .update({ assigned_agent_id: agentId })
-        .eq("id", conversation.id);
+      try {
+        const res = await fetch(`/api/conversations/${conversation.id}/assign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assigned_agent_id: agentId }),
+        });
 
-      if (error) {
-        console.error("Failed to update assignment:", error);
-        toast.error("Failed to update assignment");
-        return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Failed to update assignment");
+        }
+
+        onAssignChange(conversation.id, agentId);
+      } catch (err) {
+        console.error("Failed to update assignment:", err);
+        toast.error(err instanceof Error ? err.message : "Failed to update assignment");
       }
-
-      onAssignChange(conversation.id, agentId);
     },
     [conversation, onAssignChange],
   );
