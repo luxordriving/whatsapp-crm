@@ -229,22 +229,26 @@ export function ContactDetailView({
     const isSelected = contactTagIds.includes(tagId);
 
     if (isSelected) {
-      const { error } = await supabase
-        .from('contact_tags')
-        .delete()
-        .eq('contact_id', contactId)
-        .eq('tag_id', tagId);
-      if (!error) {
+      const res = await fetch(`/api/contacts/${contactId}/tags?tag_id=${tagId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
         setContactTagIds((prev) => prev.filter((id) => id !== tagId));
         onUpdated();
+      } else {
+        toast.error('Failed to remove tag');
       }
     } else {
-      const { error } = await supabase
-        .from('contact_tags')
-        .insert({ contact_id: contactId, tag_id: tagId });
-      if (!error) {
+      const res = await fetch(`/api/contacts/${contactId}/tags`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tag_id: tagId }),
+      });
+      if (res.ok) {
         setContactTagIds((prev) => [...prev, tagId]);
         onUpdated();
+      } else {
+        toast.error('Failed to add tag');
       }
     }
     setSavingTags(false);

@@ -177,20 +177,26 @@ export function ContactForm({
 
       // Sync tags
       if (contactId) {
-        await supabase
-          .from('contact_tags')
-          .delete()
-          .eq('contact_id', contactId);
+        const initialTagIds = new Set(contactTags.map((ct) => ct.tag_id));
+        const finalTagIds = new Set(selectedTagIds);
 
-        if (selectedTagIds.length > 0) {
-          const tagRows = selectedTagIds.map((tag_id) => ({
-            contact_id: contactId!,
-            tag_id,
-          }));
-          const { error: tagError } = await supabase
-            .from('contact_tags')
-            .insert(tagRows);
-          if (tagError) throw tagError;
+        const toAdd = selectedTagIds.filter((id) => !initialTagIds.has(id));
+        const toRemove = contactTags
+          .map((ct) => ct.tag_id)
+          .filter((id) => !finalTagIds.has(id));
+
+        for (const tagId of toRemove) {
+          await fetch(`/api/contacts/${contactId}/tags?tag_id=${tagId}`, {
+            method: 'DELETE',
+          });
+        }
+
+        for (const tagId of toAdd) {
+          await fetch(`/api/contacts/${contactId}/tags`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ tag_id: tagId }),
+          });
         }
       }
 
